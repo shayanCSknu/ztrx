@@ -115,7 +115,95 @@ trait Source: Send {
     fn rumble(&mut self, slot: usize, low: u16, high: u16);
 }
 
+/// Keys the stand-in pad's sticks and triggers use; they cannot be remapped.
+const AXIS_KEYS: [u8; 10] = *b"WASDIJKLZC";
+
+/// A key by name: a letter, a digit, or `Enter`, `Esc`, `Tab`, `Back`,
+/// `Space`, `Up`, `Down`, `Left`, `Right` (any case).
+fn virtual_key(name: &str) -> Option<u8> {
+    let name = name.trim();
+    Some(match name.to_ascii_lowercase().as_str() {
+        "enter" => 0x0D,
+        "esc" => 0x1B,
+        "tab" => 0x09,
+        "back" => 0x08,
+        "space" => 0x20,
+        "up" => 0x26,
+        "down" => 0x28,
+        "left" => 0x25,
+        "right" => 0x27,
+        _ if name.len() == 1 && name.as_bytes()[0].is_ascii_alphanumeric() => {
+            name.as_bytes()[0].to_ascii_uppercase()
+        }
+        _ => return None,
+    })
+}
+
+/// A pad button by name (any case).
+fn pad_button(name: &str) -> Option<u32> {
+    Some(match name.trim().to_ascii_lowercase().as_str() {
+        "menu" => MENU,
+        "view" => VIEW,
+        "a" => A,
+        "b" => B,
+        "x" => X,
+        "y" => Y,
+        "up" => UP,
+        "down" => DOWN,
+        "left" => LEFT,
+        "right" => RIGHT,
+        "lb" => LEFT_SHOULDER,
+        "rb" => RIGHT_SHOULDER,
+        "ls" => LEFT_STICK,
+        "rs" => RIGHT_STICK,
+        _ => return None,
+    })
+}
+
+/// The stand-in pad's buttons with `VICTORY_PAD_MAP=<key>=<button>,...`
+/// applied: each entry binds a key to a button in place of what that key
+/// did before; the button's other keys keep working. Entries that name an
+/// unknown key or button, or a stick or trigger key, are skipped and
+/// returned.
+fn pad_map(spec: &str) -> (Vec<(u8, u32)>, Vec<String>) {
+    let mut table = FALLBACK_BUTTONS.to_vec();
+    let mut skipped = Vec::new();
+    for entry in spec.split(',').map(str::trim).filter(|e| !e.is_empty()) {
+        let bound = entry.split_once('=').and_then(|(key, button)| {
+            let vk = virtual_key(key).filter(|vk| !AXIS_KEYS.contains(vk))?;
+            Some((vk, pad_button(button)?))
+        });
+        match bound {
+            Some((vk, button)) => {
+                table.retain(|&(key, _)| key != vk);
+                table.push((vk, button));
+            }
+            None => skipped.push(entry.to_owned()),
+        }
+    }
+    (table, skipped)
+}
+
+/// The stand-in pad's buttons in use, read from the environment once.
+fn fallback_buttons() -> &'static [(u8, u32)] {
+    static TABLE: LazyLock<Vec<(u8, u32)>> = LazyLock::new(|| {
+        let (table, skipped) = pad_map(&std::env::var("VICTORY_PAD_MAP").unwrap_or_default());
+        for entry in skipped {
+            tracing::warn!(
+                entry,
+                "VICTORY_PAD_MAP: entry skipped (unknown key or button, or a stick or trigger key)"
+            );
+        }
+        table
+    });
+    &TABLE
+}
+
 fn fallback(keys: &[KeyState]) -> PadState {
+    fallback_with(fallback_buttons(), keys)
+}
+
+fn fallback_with(buttons: &[(u8, u32)], keys: &[KeyState]) -> PadState {
     let on = |vk: u8| {
         if keys.iter().any(|k| k.virtual_key == vk) {
             1.0
@@ -124,7 +212,7 @@ fn fallback(keys: &[KeyState]) -> PadState {
         }
     };
     PadState {
-        buttons: FALLBACK_BUTTONS
+        buttons: buttons
             .iter()
             .filter(|(vk, _)| on(*vk) != 0.0)
             .fold(0, |all, (_, bit)| all | bit),
@@ -1153,7 +1241,9 @@ mod host {
             #[cfg(feature = "diagnostics")]
             if slot == 0 {
                 for vk in scripted() {
-                    if let Some(&(_, button)) = super::FALLBACK_BUTTONS.iter().find(|(key, _)| *key == vk) {
+                    if let Some(&(_, button)) =
+                        super::fallback_buttons().iter().find(|(key, _)| *key == vk)
+                    {
                         pad.buttons |= button;
                     }
                 }
@@ -1199,29 +1289,16 @@ mod host {
     }
 
     /// Debugging aid: `VICTORY_KEYS=<seconds>:<key>,...` holds each key for
-    /// 0.2 s that long after input starts, with or without focus. A key is a
-    /// letter, a digit, or `Enter`, `Esc`, `Tab`, `Back`, `Up`, `Down`,
-    /// `Left`, `Right` (the stand-in pad's table maps them to buttons).
+    /// 0.2 s that long after input starts, with or without focus. Keys are
+    /// named as for `VICTORY_PAD_MAP` (`virtual_key`); the stand-in pad's
+    /// table maps them to buttons.
     #[cfg(feature = "diagnostics")]
     fn scripted() -> Vec<u8> {
         static SCRIPT: LazyLock<(Instant, Vec<(Duration, u8)>)> = LazyLock::new(|| {
             let list = std::env::var("VICTORY_KEYS").unwrap_or_default();
             let keys = list.split(',').filter_map(|entry| {
                 let (at, key) = entry.split_once(':')?;
-                let vk = match key.trim() {
-                    "Enter" => 0x0D,
-                    "Esc" => 0x1B,
-                    "Tab" => 0x09,
-                    "Back" => 0x08,
-                    "Up" => 0x26,
-                    "Down" => 0x28,
-                    "Left" => 0x25,
-                    "Right" => 0x27,
-                    k if k.len() == 1 && k.as_bytes()[0].is_ascii_alphanumeric() => {
-                        k.as_bytes()[0].to_ascii_uppercase()
-                    }
-                    _ => return None,
-                };
+                let vk = super::virtual_key(key)?;
                 Some((
                     Duration::try_from_secs_f64(at.trim().parse().ok()?).ok()?,
                     vk,
@@ -1414,6 +1491,49 @@ mod tests {
 
     fn release(reading: *const Reading) {
         slot::<extern "system" fn(*const Reading) -> u32, _>(reading, 0x10)(reading);
+    }
+
+    fn held(names: &[&str]) -> Vec<KeyState> {
+        names
+            .iter()
+            .map(|name| KeyState {
+                virtual_key: virtual_key(name).unwrap(),
+                ..Default::default()
+            })
+            .collect()
+    }
+
+    #[test]
+    fn an_empty_pad_map_keeps_the_default_keys() {
+        let (table, skipped) = pad_map("");
+        assert_eq!(table, FALLBACK_BUTTONS);
+        assert!(skipped.is_empty());
+        assert_eq!(
+            fallback_with(&table, &held(&["Q", "Enter"])).buttons,
+            LEFT_SHOULDER | A
+        );
+    }
+
+    #[test]
+    fn a_pad_map_binds_new_keys_and_rebinds_old_ones() {
+        let (table, skipped) = pad_map(" space = A , q=RB,1=lb ");
+        assert!(skipped.is_empty());
+        // Space is new; Enter still presses A too.
+        assert_eq!(fallback_with(&table, &held(&["Space"])).buttons, A);
+        assert_eq!(fallback_with(&table, &held(&["Enter"])).buttons, A);
+        // Q now presses RB, no longer LB; 1 presses LB.
+        assert_eq!(fallback_with(&table, &held(&["Q"])).buttons, RIGHT_SHOULDER);
+        assert_eq!(fallback_with(&table, &held(&["1"])).buttons, LEFT_SHOULDER);
+    }
+
+    #[test]
+    fn a_pad_map_skips_bad_entries_and_stick_keys() {
+        let (table, skipped) = pad_map("W=A,Space=Jump,F1=B,Q,R=LS");
+        assert_eq!(skipped, ["W=A", "Space=Jump", "F1=B", "Q"]);
+        // The good entry still applies, and W still only moves the stick.
+        assert_eq!(fallback_with(&table, &held(&["R"])).buttons, LEFT_STICK);
+        let pad = fallback_with(&table, &held(&["W"]));
+        assert_eq!((pad.buttons, pad.left_y), (0, 1.0));
     }
 
     #[test]

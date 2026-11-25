@@ -42,6 +42,13 @@ powershell -ExecutionPolicy Bypass -File scripts\play.ps1 -Game "<your game fold
 (a DualShock/DualSense through DS4Windows works). With no pad connected the
 keyboard acts as one while the game window has focus.
 
+The keyboard's buttons can be changed with `VICTORY_PAD_MAP`, a list of
+`<key>=<button>` entries, for example `$env:VICTORY_PAD_MAP = "Space=A,R=LB"`.
+Keys: a letter, a digit, `Enter`, `Esc`, `Tab`, `Back`, `Space`, `Up`,
+`Down`, `Left`, `Right`. Buttons: `A`, `B`, `X`, `Y`, `LB`, `RB`, `LS`, `RS`,
+`Menu`, `View`, `Up`, `Down`, `Left`, `Right`. W/A/S/D, I/J/K/L (sticks) and
+Z/C (triggers) stay fixed.
+
 ## Faster settings (optional, off by default)
 
 `VICTORY_RELAY=2`, or `VICTORY_LATE_WAIT=3 VICTORY_WIDE_BACK=1` cut frame
