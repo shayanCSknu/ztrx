@@ -6,6 +6,7 @@
 mod census;
 mod inspect;
 mod run;
+mod settings;
 mod shader;
 mod translate;
 
@@ -107,6 +108,9 @@ enum Command {
     },
     /// Show the resolved configuration and check it.
     Config,
+    /// List the environment switches, which are set, and which need a
+    /// diagnostics build.
+    Settings,
 }
 
 #[derive(Clone, Copy, ValueEnum)]
@@ -172,6 +176,10 @@ fn main() -> Result<()> {
             title_args: _,
         } => run::run(&exe, unimplemented, strict, execute, console),
         Command::Config => show_config(),
+        Command::Settings => {
+            settings::run();
+            Ok(())
+        }
     }
 }
 

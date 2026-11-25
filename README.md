@@ -72,10 +72,13 @@ time on the test machines. Set them in PowerShell before running the script.
 |---|---|
 | `VICTORY_CAPTURE=<dir>` + `VICTORY_CAPTURE_FRAMES=<list>` | save those frames as PNG (diagnostics build) |
 | `VICTORY_KEYS=30:Enter,35:X` | press keys at those seconds (diagnostics build) |
-| `VICTORY_D3D12_DRED=1` | on a GPU failure, report the commands in flight |
+| `VICTORY_D3D12_DRED=1` | on a GPU failure, report the commands in flight (diagnostics build) |
 | `VICTORY_PIPELINE_WAIT_MS=24` | shorter per-frame wait for pipelines still being built |
 
 Diagnostics build: `cargo build --profile diag -p victory --features diagnostics`
+
+`victory settings` lists every switch above and more, shows which are set now,
+and warns about a set switch that this build ignores.
 
 ## License
 
