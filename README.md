@@ -1,3 +1,9 @@
+> **This is shayanCSknu's version of [ztrx](https://github.com/Zettrox/ztrx).**
+> Based on ztrx (Zettrox), VIctory (Marvisak) and victory-fork (fxceless).
+>
+> **Added in this version:**
+> - `VICTORY_PAD_MAP`: change which keyboard keys press which pad buttons (see "Play" below).
+
 # ztrx
 
 **ztrx** runs the Xbox Series build of the game natively on Windows PCs with
