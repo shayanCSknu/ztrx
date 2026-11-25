@@ -22,6 +22,8 @@ pub struct Config {
     pub data_dir: PathBuf,
     /// Other titles used to exercise platform-level code.
     pub test_titles: Vec<PathBuf>,
+    /// The keyboard's stand-in pad buttons, `<key>=<button>,...`.
+    pub pad_map: Option<String>,
     /// The config file that was read, if any.
     pub source: Option<PathBuf>,
 }
@@ -31,6 +33,14 @@ pub struct Config {
 struct FileConfig {
     #[serde(default)]
     paths: FilePaths,
+    #[serde(default)]
+    input: FileInput,
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct FileInput {
+    pad_map: Option<String>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -70,7 +80,10 @@ impl Config {
             }
             None => (None, FileConfig::default()),
         };
-        Self::resolve(parsed.paths, source, |k| std::env::var_os(k))
+        let env = |k: &str| std::env::var_os(k);
+        let mut config = Self::resolve(parsed.paths, source, env)?;
+        config.pad_map = pad_map(parsed.input, env);
+        Ok(config)
     }
 
     fn resolve(
@@ -97,6 +110,7 @@ impl Config {
             data_dir,
             test_titles,
             source,
+            pad_map: None,
         })
     }
 
@@ -117,6 +131,14 @@ impl Config {
     pub fn data_subdir(&self, sub: &str) -> Result<PathBuf> {
         subdir(&self.data_dir, sub)
     }
+}
+
+/// `VICTORY_PAD_MAP`, else `[input].pad_map`; blank values count as unset.
+fn pad_map(file: FileInput, env: impl Fn(&str) -> Option<std::ffi::OsString>) -> Option<String> {
+    env("VICTORY_PAD_MAP")
+        .map(|v| v.to_string_lossy().into_owned())
+        .or(file.pad_map)
+        .filter(|v| !v.trim().is_empty())
 }
 
 fn subdir(root: &Path, sub: &str) -> Result<PathBuf> {
@@ -186,6 +208,29 @@ mod tests {
             cfg.test_titles,
             vec![PathBuf::from("first"), PathBuf::from("second")]
         );
+    }
+
+    #[test]
+    fn pad_map_comes_from_the_file_unless_the_environment_sets_one() {
+        let file = || FileInput {
+            pad_map: Some("Space=A".into()),
+        };
+        let none = |_: &str| None;
+        assert_eq!(pad_map(file(), none).as_deref(), Some("Space=A"));
+        let env = |k: &str| (k == "VICTORY_PAD_MAP").then(|| OsString::from("R=LB"));
+        assert_eq!(pad_map(file(), env).as_deref(), Some("R=LB"));
+        // A blank setting anywhere means none.
+        let blank = |k: &str| (k == "VICTORY_PAD_MAP").then(|| OsString::from(" "));
+        assert_eq!(pad_map(FileInput::default(), blank), None);
+        assert_eq!(pad_map(FileInput::default(), none), None);
+    }
+
+    #[test]
+    fn input_section_parses() {
+        let parsed: FileConfig = toml::from_str("[input]\npad_map = 'Space=A,R=LB'").unwrap();
+        assert_eq!(parsed.input.pad_map.as_deref(), Some("Space=A,R=LB"));
+        // A misspelt key is an error, not silently ignored.
+        assert!(toml::from_str::<FileConfig>("[input]\npadmap = 'x'").is_err());
     }
 
     #[test]

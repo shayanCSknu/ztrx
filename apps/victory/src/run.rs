@@ -71,6 +71,14 @@ pub fn run(
         Console::SeriesS => victory_hle::console::Console::SeriesS,
     });
     println!("console        {}", victory_hle::console::current().name());
+    if let Some(map) = &cfg.pad_map {
+        println!("pad map        {map}");
+        for entry in victory_hle::modules::gameinput::use_pad_map(map) {
+            println!(
+                "pad map        skipped {entry} (unknown key or button, or a stick or trigger key)"
+            );
+        }
+    }
     let dlls = victory_loader::load_title_dlls(image.info(), title_dir, &images, &wanted)?;
     for (name, dll) in &dlls {
         println!("title dll      {name} at {:#x}", dll.base());

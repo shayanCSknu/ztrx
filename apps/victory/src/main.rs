@@ -194,6 +194,20 @@ fn show_config() -> Result<()> {
     for t in &cfg.test_titles {
         println!("test_title  : {}", status(&Some(t.clone())));
     }
+    println!(
+        "pad_map     : {}",
+        cfg.pad_map.as_deref().unwrap_or("(not set)")
+    );
+    for entry in cfg
+        .pad_map
+        .as_deref()
+        .map(victory_hle::modules::gameinput::check_pad_map)
+        .unwrap_or_default()
+    {
+        println!(
+            "              skipped {entry} (unknown key or button, or a stick or trigger key)"
+        );
+    }
     for p in cfg
         .game_dir
         .iter()

@@ -184,10 +184,30 @@ fn pad_map(spec: &str) -> (Vec<(u8, u32)>, Vec<String>) {
     (table, skipped)
 }
 
-/// The stand-in pad's buttons in use, read from the environment once.
+/// The map given by `use_pad_map`, in place of `VICTORY_PAD_MAP`.
+static PAD_MAP: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+
+/// Uses `spec` (as `VICTORY_PAD_MAP`) for the stand-in pad; set before the
+/// title starts. Returns the entries that will be skipped.
+pub fn use_pad_map(spec: &str) -> Vec<String> {
+    let _ = PAD_MAP.set(spec.to_owned());
+    check_pad_map(spec)
+}
+
+/// The entries of `spec` (as `VICTORY_PAD_MAP`) that would be skipped.
+pub fn check_pad_map(spec: &str) -> Vec<String> {
+    pad_map(spec).1
+}
+
+/// The stand-in pad's buttons in use, read once: `use_pad_map`, else the
+/// environment.
 fn fallback_buttons() -> &'static [(u8, u32)] {
     static TABLE: LazyLock<Vec<(u8, u32)>> = LazyLock::new(|| {
-        let (table, skipped) = pad_map(&std::env::var("VICTORY_PAD_MAP").unwrap_or_default());
+        let spec = PAD_MAP
+            .get()
+            .cloned()
+            .unwrap_or_else(|| std::env::var("VICTORY_PAD_MAP").unwrap_or_default());
+        let (table, skipped) = pad_map(&spec);
         for entry in skipped {
             tracing::warn!(
                 entry,

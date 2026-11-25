@@ -53,7 +53,13 @@ The keyboard's buttons can be changed with `VICTORY_PAD_MAP`, a list of
 Keys: a letter, a digit, `Enter`, `Esc`, `Tab`, `Back`, `Space`, `Up`,
 `Down`, `Left`, `Right`. Buttons: `A`, `B`, `X`, `Y`, `LB`, `RB`, `LS`, `RS`,
 `Menu`, `View`, `Up`, `Down`, `Left`, `Right`. W/A/S/D, I/J/K/L (sticks) and
-Z/C (triggers) stay fixed.
+Z/C (triggers) stay fixed. To keep a map, put it in `victory.toml` instead
+(see `victory.example.toml`); `VICTORY_PAD_MAP` wins when both are set:
+
+```toml
+[input]
+pad_map = 'Space=A,R=LB'
+```
 
 ## Faster settings (optional, off by default)
 
